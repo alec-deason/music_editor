@@ -1,7 +1,7 @@
 use std::process::Command;
 use usvg::SystemFontDB;
 use strong_xml::XmlWrite;
-use ir_to_mei::*;
+use ir::*;
 
 fn main() {
     let mut mei = Mei::default();
