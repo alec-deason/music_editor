@@ -1,0 +1,13 @@
+[package]
+name = "ir_to_svg"
+version = "0.1.0"
+authors = ["Alec Deason <alec@tinycountry.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ir = { path = "../ir" }
+ir_to_mei = { path = "../ir_to_mei" }
+usvg = { version = "0.14.0", features = ["text"] }
+fontdb = "0.5.1"
