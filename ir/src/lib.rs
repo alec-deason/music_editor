@@ -187,7 +187,9 @@ pub struct Note {
     #[xml(attr = "xml:id")]
     pub xml_id: Option<String>,
     #[xml(attr = "pname")]
-    pub pname: String,
+    pub pname: Option<String>,
+    #[xml(attr = "pclass")]
+    pub pclass: Option<u32>,
     #[xml(attr = "oct")]
     pub oct: u32,
     #[xml(attr = "dur")]
