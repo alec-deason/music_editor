@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 ir = { path = "../ir" }
+log = "0.4.14"

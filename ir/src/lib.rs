@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use strong_xml::{XmlRead, XmlWrite};
 use tempfile::tempdir;
 
@@ -25,6 +25,8 @@ impl Mei {
             .arg("--footer")
             .arg("none")
             .arg(&file_path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
             .unwrap();
         let file_path = dir.path().join("score.svg");
