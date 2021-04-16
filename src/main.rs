@@ -25,7 +25,7 @@ impl Default for App {
         Self {
             ctx: Context {
                 score: Score::default(),
-                selections: Selections(vec![Selection { begin: Location(Beat(0)), end: Location(Beat(0)) }])
+                selections: Selections(vec![Selection { begin: Location(Pulse(0)), end: Location(Pulse(0)) }])
             },
             should_stop: false,
             view_dirty: true,
@@ -38,6 +38,18 @@ impl InputState for Idle {
     fn handle_key(self: Box<Self>, app: &mut App, c: KeyCode) -> Box<dyn InputState> {
         if c == KeyCode::Esc || c == KeyCode::Char('q') {
             app.should_stop = true;
+        } else if c == KeyCode::Left {
+            let operation = MoveSelections {
+                delta: Duration::Event(-1),
+                selections: vec![0],
+            };
+            operation.apply(&mut app.ctx);
+        } else if c == KeyCode::Right {
+            let operation = MoveSelections {
+                delta: Duration::Event(1),
+                selections: vec![0],
+            };
+            operation.apply(&mut app.ctx);
         } else if let KeyCode::Char(c) = c {
             if let Some(p) = match c {
                 'a' => Some(PitchName::A),
@@ -57,7 +69,7 @@ impl InputState for Idle {
                         },
                         octave: Octave(4)
                     },
-                    duration: Beat(4),
+                    duration: Pulse(4),
                     selections: None,
                 };
                 operation.apply(&mut app.ctx);
