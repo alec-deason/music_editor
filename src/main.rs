@@ -2,9 +2,10 @@ use std::io::{stdout, Write};
 use std::process::Command;
 use std::fs::File;
 use simplelog::*;
+use strong_xml::XmlWrite;
 
 use crossterm::{
-    event::{read, Event, KeyCode, KeyEvent},
+    event::{read, Event, KeyCode, KeyEvent, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode},
     Result,
 };
@@ -12,7 +13,7 @@ use crossterm::{
 use operations::*;
 
 trait InputState {
-    fn handle_key(self: Box<Self>, app: &mut App, c: KeyCode) -> Box<dyn InputState>;
+    fn handle_key(self: Box<Self>, app: &mut App, c: KeyCode, m: KeyModifiers) -> Box<dyn InputState>;
 }
 
 struct App {
@@ -35,21 +36,37 @@ impl Default for App {
 
 struct Idle;
 impl InputState for Idle {
-    fn handle_key(self: Box<Self>, app: &mut App, c: KeyCode) -> Box<dyn InputState> {
+    fn handle_key(self: Box<Self>, app: &mut App, c: KeyCode, m: KeyModifiers) -> Box<dyn InputState> {
         if c == KeyCode::Esc || c == KeyCode::Char('q') {
             app.should_stop = true;
         } else if c == KeyCode::Left {
-            let operation = MoveSelections {
-                delta: Duration::Event(-1),
-                selections: vec![0],
-            };
-            operation.apply(&mut app.ctx);
+            if m.contains(KeyModifiers::SHIFT) {
+                MoveSelectionsEnd {
+                    delta: Duration::Event(-1),
+                    selections: vec![0],
+                }.apply(&mut app.ctx);
+            } else {
+                MoveSelections {
+                    delta: Duration::Event(-1),
+                    selections: vec![0],
+                }.apply(&mut app.ctx);
+            }
         } else if c == KeyCode::Right {
-            let operation = MoveSelections {
-                delta: Duration::Event(1),
+            if m.contains(KeyModifiers::SHIFT) {
+                MoveSelectionsEnd {
+                    delta: Duration::Event(1),
+                    selections: vec![0],
+                }.apply(&mut app.ctx);
+            } else {
+                MoveSelections {
+                    delta: Duration::Event(1),
+                    selections: vec![0],
+                }.apply(&mut app.ctx);
+            }
+        } else if c == KeyCode::Backspace {
+            DeleteSelections {
                 selections: vec![0],
-            };
-            operation.apply(&mut app.ctx);
+            }.apply(&mut app.ctx);
         } else if let KeyCode::Char(c) = c {
             if let Some(p) = match c {
                 'a' => Some(PitchName::A),
@@ -87,12 +104,16 @@ fn main() -> Result<()> {
     ]
     ).unwrap();
 
+    let mut verovio = verovio::Verovio::new("/usr/local/share/verovio/");
+
     enable_raw_mode()?;
     let mut state:Box<InputState> = Box::new(Idle);
     let mut app = App::default();
 
     let mei = app.ctx.score.to_mei();
-    std::fs::write("/tmp/test.svg", &mei.to_svg());
+    let mei_xml = mei.to_string().unwrap();
+    let svg = verovio.render_data(&mei_xml);
+    std::fs::write("/tmp/test.svg", svg).unwrap();
     app.view_dirty = false;
 
     let mut viewer = Command::new("/usr/bin/imv")
@@ -104,13 +125,20 @@ fn main() -> Result<()> {
 
     loop {
         let event = read()?;
-        if let Event::Key(KeyEvent { code: k, ..}) = event {
-            state = state.handle_key(&mut app, k);
+        if let Event::Key(KeyEvent { code: k, modifiers: m}) = event {
+            state = state.handle_key(&mut app, k, m);
         }
         log::debug!("{:?}", app.ctx);
         if app.view_dirty {
             let mei = app.ctx.score.to_mei();
-            std::fs::write("/tmp/test.svg", &mei.to_svg());
+            let mei_xml = mei.to_string().unwrap();
+            let svg = verovio.render_data(&mei_xml);
+            std::fs::write("/tmp/test.svg", svg).unwrap();
+            Command::new("/usr/bin/imv-msg")
+                .arg(&format!("{}", viewer.id()))
+                .arg("open")
+                .arg("/tmp/test.svg")
+                .status();
             app.view_dirty = false;
         }
         if app.should_stop {

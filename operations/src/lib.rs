@@ -1,3 +1,4 @@
+#![feature(binary_heap_retain)]
 use std::collections::BinaryHeap;
 
 #[derive(Clone, Default, Debug)]
@@ -18,7 +19,6 @@ impl Score {
         let mut beat = Pulse::default();
         let mut events = self.events.clone().into_sorted_vec();
         events.reverse();
-        log::debug!("Events: {:?}", events);
         for event in &events {
             if event.start > beat {
                 let rest = event.start - beat;
@@ -265,10 +265,9 @@ impl Operation for MoveSelections {
     fn apply(&self, ctx: &mut Context) {
         for selection_id in &self.selections {
             let selection_begin = ctx.selections.0[*selection_id as usize].begin;
-            let selection_end = ctx.selections.0[*selection_id as usize].end;
             let delta_pulse = match self.delta {
                 Duration::Pulse(p) => p,
-                Duration::Event(mut d) => {
+                Duration::Event(d) => {
                     let mut events = ctx.score.events.clone().into_sorted_vec();
                     events.reverse();
                     let mut idx = events.len() as i32 -1;
@@ -287,6 +286,62 @@ impl Operation for MoveSelections {
             let selection = &mut ctx.selections.0[*selection_id as usize];
             selection.begin.0 += delta_pulse;
             selection.end.0 += delta_pulse;
+        }
+    }
+}
+
+pub struct MoveSelectionsEnd {
+    pub delta: Duration,
+    pub selections: Vec<u32>
+}
+
+impl Operation for MoveSelectionsEnd {
+    fn apply(&self, ctx: &mut Context) {
+        for selection_id in &self.selections {
+            let selection_end = ctx.selections.0[*selection_id as usize].end;
+            let delta_pulse = match self.delta {
+                Duration::Pulse(p) => p,
+                Duration::Event(d) => {
+                    let mut events = ctx.score.events.clone().into_sorted_vec();
+                    events.reverse();
+                    let mut idx = events.len() as i32 -1;
+                    for (i, event) in events.iter().enumerate() {
+                        if event.start > selection_end.0 {
+                            idx = i as i32;
+                            break
+                        }
+                    }
+                    let initial = events[idx as usize].start;
+                    idx += d;
+                    idx = idx.max(0).min(events.len() as i32 -1);
+                    events[idx as usize].start - initial
+                }
+            };
+            let selection = &mut ctx.selections.0[*selection_id as usize];
+            selection.end.0 += delta_pulse;
+            println!("{:?}", delta_pulse);
+            if selection.end.0 < selection.begin.0 {
+                std::mem::swap(&mut selection.end, &mut selection.begin);
+            }
+        }
+    }
+}
+
+pub struct DeleteSelections {
+    pub selections: Vec<u32>
+}
+
+impl Operation for DeleteSelections {
+    fn apply(&self, ctx: &mut Context) {
+        for selection_id in &self.selections {
+            let selection = &ctx.selections.0[*selection_id as usize];
+            ctx.score.events.retain(|event| {
+                if event.start >= selection.begin.0 && event.start <= selection.end.0 {
+                    false
+                } else {
+                    true
+                }
+            });
         }
     }
 }
