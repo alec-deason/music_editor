@@ -93,7 +93,7 @@ pub struct Event {
 }
 
 impl Event {
-    fn id(&self) -> u32 {
+    pub fn id(&self) -> u32 {
         self.event_id
     }
 }

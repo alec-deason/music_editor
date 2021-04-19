@@ -48,6 +48,7 @@ impl InputState for Idle {
                     selections: vec![0],
                 }.apply(&mut app.ctx);
             }
+            app.view_dirty = true;
         } else if c == KeyCode::Right {
             if m.contains(KeyModifiers::SHIFT) {
                 MoveSelectionsEnd {
@@ -60,6 +61,7 @@ impl InputState for Idle {
                     selections: vec![0],
                 }.apply(&mut app.ctx);
             }
+            app.view_dirty = true;
         } else if c == KeyCode::Backspace {
             DeleteSelections {
                 selections: vec![0],
@@ -110,7 +112,13 @@ fn main() -> Result<()> {
     let mei = app.ctx.score.to_mei();
     let mei_xml = mei.to_string().unwrap();
     let svg = verovio.render_data(&mei_xml);
-    std::fs::write("/tmp/test.svg", svg).unwrap();
+    let package =  sxd_document::parser::parse(&svg).unwrap();
+    let mut context = sxd_xpath::Context::new();
+    context.set_namespace("svg", "http://www.w3.org/2000/svg");
+    let factory = sxd_xpath::Factory::new();
+    let mut doc = package.as_document();
+    let mut f = std::fs::File::create("/tmp/test.svg").unwrap();
+    sxd_document::writer::format_document(&doc, &mut f).unwrap();
     app.view_dirty = false;
 
     let mut viewer = Command::new("/usr/bin/imv")
@@ -130,7 +138,24 @@ fn main() -> Result<()> {
             let mei = app.ctx.score.to_mei();
             let mei_xml = mei.to_string().unwrap();
             let svg = verovio.render_data(&mei_xml);
-            std::fs::write("/tmp/test.svg", svg).unwrap();
+            let package =  sxd_document::parser::parse(&svg).unwrap();
+            let mut doc = package.as_document();
+            for e in app.ctx.events_in_selection(0) {
+                let xpath = factory.build(&format!("//svg:g[@id='note_{}']/svg:g/svg:use", e.id())).unwrap().unwrap();
+                let value = xpath.evaluate(&context, doc.root()).unwrap();
+
+                if let sxd_xpath::Value::Nodeset(ns) = value {
+                    for node in ns {
+                        if let sxd_xpath::nodeset::Node::Element(e) = node {
+                            e.set_attribute_value("fill", "red");
+                        }
+                    }
+                }
+
+
+            }
+            let mut f = std::fs::File::create("/tmp/test.svg").unwrap();
+            sxd_document::writer::format_document(&doc, &mut f).unwrap();
             Command::new("/usr/bin/imv-msg")
                 .arg(&format!("{}", viewer.id()))
                 .arg("open")
