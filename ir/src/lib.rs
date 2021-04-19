@@ -15,28 +15,6 @@ pub struct Mei {
     pub music: Option<Music>,
 }
 
-impl Mei {
-    pub fn to_svg(&self) -> String {
-        let dir = tempdir().unwrap();
-
-        let file_path = dir.path().join("score.mei");
-        std::fs::write(&file_path, self.to_string().unwrap()).unwrap();
-        Command::new("/usr/local/bin/verovio")
-            .arg("--footer")
-            .arg("none")
-            .arg(&file_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .unwrap();
-        let file_path = dir.path().join("score.svg");
-
-        let result = std::fs::read_to_string(&file_path).unwrap();
-        dir.close().unwrap();
-        result
-    }
-}
-
 #[derive(Debug, Default, XmlWrite, XmlRead, PartialEq, Eq)]
 #[xml(tag = "meiHead")]
 pub struct MeiHead {

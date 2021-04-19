@@ -24,10 +24,7 @@ struct App {
 impl Default for App {
     fn default() -> Self {
         Self {
-            ctx: Context {
-                score: Score::default(),
-                selections: Selections(vec![Selection { begin: Location(Pulse(0)), end: Location(Pulse(0)) }])
-            },
+            ctx: Context::default(),
             should_stop: false,
             view_dirty: true,
         }

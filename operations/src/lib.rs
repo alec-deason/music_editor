@@ -1,9 +1,9 @@
-#![feature(binary_heap_retain)]
-use std::collections::BinaryHeap;
+#![feature(btree_retain, map_first_last)]
+use std::collections::BTreeSet;
 
 #[derive(Clone, Default, Debug)]
 pub struct Score {
-    events: BinaryHeap<Event>,
+    events: BTreeSet<Event>,
 }
 
 impl Score {
@@ -17,9 +17,7 @@ impl Score {
         let mut layer = ir::Layer::default();
         layer.n = Some(1);
         let mut beat = Pulse::default();
-        let mut events = self.events.clone().into_sorted_vec();
-        events.reverse();
-        for event in &events {
+        for event in &self.events {
             if event.start > beat {
                 let rest = event.start - beat;
                 let dur = (1.0 / (rest.0 as f32 / 16.0*4.0)).floor() as u32;
@@ -27,6 +25,7 @@ impl Score {
             }
             let dur = (1.0 / (event.duration.0 as f32 / 16.0*4.0)).floor() as u32;
             layer.events.push(ir::EventLike::Note(ir::Note {
+                xml_id: Some(format!("note_{}", event.event_id)),
                 pname: Some(event.note.pitch.class.to_string()),
                 oct: event.note.octave.0,
                 dur: Some(dur),
@@ -85,22 +84,29 @@ impl Score {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Event {
+    event_id: u32,
     note: Note,
     duration: Pulse,
     start: Pulse,
 }
 
+impl Event {
+    fn id(&self) -> u32 {
+        self.event_id
+    }
+}
+
 impl Ord for Event {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.start.cmp(&self.start)
+        self.start.cmp(&other.start)
     }
 }
 
 impl PartialOrd for Event {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(other.start.cmp(&self.start))
+        Some(self.start.cmp(&other.start))
     }
 }
 
@@ -245,7 +251,8 @@ impl Operation for AppendNote {
             ctx.insert_event_at_location(location, Event {
                 note: self.note,
                 start: location.0,
-                duration: self.duration
+                duration: self.duration,
+                ..Default::default()
             });
         }
     }
@@ -268,19 +275,17 @@ impl Operation for MoveSelections {
             let delta_pulse = match self.delta {
                 Duration::Pulse(p) => p,
                 Duration::Event(d) => {
-                    let mut events = ctx.score.events.clone().into_sorted_vec();
-                    events.reverse();
-                    let mut idx = events.len() as i32 -1;
-                    for (i, event) in events.iter().enumerate() {
+                    let mut idx = ctx.score.events.len() as i32 -1;
+                    for (i, event) in ctx.score.events.iter().enumerate() {
                         if event.start > selection_begin.0 {
                             idx = i as i32;
                             break
                         }
                     }
-                    let initial = events[idx as usize].start;
+                    let initial = ctx.score.events.iter().nth(idx as usize).unwrap().start;
                     idx += d;
-                    idx = idx.max(0).min(events.len() as i32 -1);
-                    events[idx as usize].start - initial
+                    idx = idx.max(0).min(ctx.score.events.len() as i32 -1);
+                    ctx.score.events.iter().nth(idx as usize).unwrap().start - initial
                 }
             };
             let selection = &mut ctx.selections.0[*selection_id as usize];
@@ -302,19 +307,17 @@ impl Operation for MoveSelectionsEnd {
             let delta_pulse = match self.delta {
                 Duration::Pulse(p) => p,
                 Duration::Event(d) => {
-                    let mut events = ctx.score.events.clone().into_sorted_vec();
-                    events.reverse();
-                    let mut idx = events.len() as i32 -1;
-                    for (i, event) in events.iter().enumerate() {
+                    let mut idx = ctx.score.events.len() as i32 -1;
+                    for (i, event) in ctx.score.events.iter().enumerate() {
                         if event.start > selection_end.0 {
                             idx = i as i32;
                             break
                         }
                     }
-                    let initial = events[idx as usize].start;
+                    let initial = ctx.score.events.iter().nth(idx as usize).unwrap().start;
                     idx += d;
-                    idx = idx.max(0).min(events.len() as i32 -1);
-                    events[idx as usize].start - initial
+                    idx = idx.max(0).min(ctx.score.events.len() as i32 -1);
+                    ctx.score.events.iter().nth(idx as usize).unwrap().start - initial
                 }
             };
             let selection = &mut ctx.selections.0[*selection_id as usize];
@@ -349,22 +352,33 @@ impl Operation for DeleteSelections {
 #[derive(Clone, Default, Debug)]
 pub struct Selections(pub Vec<Selection>);
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Debug)]
 pub struct Context {
     pub score: Score,
     pub selections: Selections,
+    next_id: u32,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self {
+            score: Score::default(),
+            selections: Selections(vec![Selection { begin: Location(Pulse(0)), end: Location(Pulse(0)) }]),
+            next_id: 0,
+        }
+    }
 }
 
 impl Context {
-    fn insert_event_at_location(&mut self, location: Location, event: Event) {
-        let mut new_events = BinaryHeap::with_capacity(self.score.events.len());
+    fn insert_event_at_location(&mut self, location: Location, mut event: Event) {
+        let mut new_events = BTreeSet::new();
         let insertion_beat = location.0;
 
-        while let Some(mut event) = self.score.events.pop() {
+        while let Some(mut event) = self.score.events.pop_first() {
             if event.start >= insertion_beat {
                 event.start += event.duration;
             }
-            new_events.push(event);
+            new_events.insert(event);
         }
         self.score.events = new_events;
 
@@ -377,6 +391,22 @@ impl Context {
             }
         }
 
-        self.score.events.push(event);
+        event.event_id = self.next_id;
+        self.next_id += 1;
+
+        self.score.events.insert(event);
+    }
+
+    pub fn events_in_selection(&self, selection: usize) -> impl Iterator<Item=&Event> {
+        let selection = &self.selections.0[selection];
+        let mut iter = self.score.events.iter();
+        std::iter::from_fn(move || {
+            while let Some(e) = iter.next() {
+                if e.start >= selection.begin.0 && e.start <= selection.end.0 {
+                    return Some(e);
+                }
+            }
+            return None;
+        })
     }
 }
