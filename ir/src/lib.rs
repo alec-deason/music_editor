@@ -170,6 +170,8 @@ pub struct Note {
     pub pname: Option<String>,
     #[xml(attr = "pclass")]
     pub pclass: Option<u32>,
+    #[xml(attr = "accid")]
+    pub accid: Option<String>,
     #[xml(attr = "oct")]
     pub oct: u32,
     #[xml(attr = "dur")]

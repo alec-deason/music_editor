@@ -26,9 +26,15 @@ impl Score {
                 layer.events.push(ir::EventLike::Rest(ir::Rest { dur: Some(dur) }));
             }
             let dur = (1.0 / (event.duration.0 as f32 / 16.0*4.0)).floor() as u32;
+            let accid = if event.note.pitch.accidental != Accidental::Natural {
+                Some(event.note.pitch.accidental.to_string())
+            } else {
+                None
+            };
             layer.events.push(ir::EventLike::Note(ir::Note {
                 xml_id: Some(format!("note_{}", event.event_id)),
                 pname: Some(event.note.pitch.class.to_string()),
+                accid,
                 oct: event.note.octave.0,
                 dur: Some(dur),
                 ..Default::default()
@@ -165,6 +171,39 @@ impl Default for Note {
     }
 }
 
+impl Note {
+    pub fn transpose(&mut self, semitones: i32) {
+        for _ in 0..semitones.abs() {
+            if semitones > 0 {
+                *self = self.successor();
+            } else {
+                *self = self.precurser();
+            }
+        }
+    }
+
+    pub fn semitones(&self) -> u32 {
+        self.octave.0 * 12 + self.pitch.semitones()
+    }
+
+    pub fn from_semitones(semitones: u32) -> Self {
+        let octave = semitones / 12;
+        let pitch = Pitch::from_semitones(semitones - octave*12);
+        Self {
+            pitch,
+            octave: Octave(octave)
+        }
+    }
+
+    pub fn successor(&self) -> Self {
+        Self::from_semitones(self.semitones() + 1)
+    }
+
+    pub fn precurser(&self) -> Self {
+        Self::from_semitones(self.semitones() - 1)
+    }
+}
+
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pitch {
@@ -181,6 +220,35 @@ impl Default for Pitch {
     }
 }
 
+impl Pitch {
+    fn semitones(&self) -> u32 {
+        let base = self.class.semitones();
+        match self.accidental {
+            Accidental::Flat => base - 1,
+            Accidental::Natural => base,
+            Accidental::Sharp => base + 1,
+        }
+    }
+
+    fn from_semitones(semitones: u32) -> Self {
+        match semitones {
+            0 => Pitch { class: PitchName::A, accidental: Accidental::Natural },
+            1 => Pitch { class: PitchName::A, accidental: Accidental::Sharp },
+            2 => Pitch { class: PitchName::B, accidental: Accidental::Natural },
+            3 => Pitch { class: PitchName::C, accidental: Accidental::Natural },
+            4 => Pitch { class: PitchName::C, accidental: Accidental::Sharp },
+            5 => Pitch { class: PitchName::D, accidental: Accidental::Natural },
+            6 => Pitch { class: PitchName::D, accidental: Accidental::Sharp },
+            7 => Pitch { class: PitchName::E, accidental: Accidental::Natural },
+            8 => Pitch { class: PitchName::F, accidental: Accidental::Natural },
+            9 => Pitch { class: PitchName::F, accidental: Accidental::Sharp },
+            10 => Pitch { class: PitchName::G, accidental: Accidental::Natural },
+            11 => Pitch { class: PitchName::G, accidental: Accidental::Sharp },
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PitchName {
     A,
@@ -190,6 +258,20 @@ pub enum PitchName {
     E,
     F,
     G,
+}
+
+impl PitchName {
+    fn semitones(&self) -> u32 {
+        match self {
+            PitchName::A => 0,
+            PitchName::B => 2,
+            PitchName::C => 3,
+            PitchName::D => 5,
+            PitchName::E => 7,
+            PitchName::F => 8,
+            PitchName::G => 10,
+        }
+    }
 }
 
 impl std::fmt::Display for PitchName {
@@ -338,6 +420,79 @@ impl Operation for MoveSelectionsEnd {
             if selection.end.0 < selection.begin.0 {
                 std::mem::swap(&mut selection.end, &mut selection.begin);
             }
+        }
+    }
+}
+
+pub struct MoveSelectionsContents {
+    pub delta: Duration,
+    pub selections: Vec<u32>
+}
+
+impl Operation for MoveSelectionsContents {
+    fn apply(&self, ctx: &mut Context) {
+        for selection_id in &self.selections {
+            let selection_begin = ctx.selections.0[*selection_id as usize].begin;
+            let delta_pulse = match self.delta {
+                Duration::Pulse(p) => p,
+                Duration::Event(d) => {
+                    let mut idx = ctx.score.events.len() as i32 -1;
+                    for (i, event) in ctx.score.events.iter().enumerate() {
+                        if event.start > selection_begin.0 {
+                            idx = i as i32;
+                            break
+                        }
+                    }
+                    let initial = ctx.score.events.iter().nth(idx as usize).unwrap().start;
+                    idx += d;
+                    idx = idx.max(0).min(ctx.score.events.len() as i32 -1);
+                    ctx.score.events.iter().nth(idx as usize).unwrap().start - initial
+                }
+            };
+            let selection = ctx.selections.0[*selection_id as usize].clone();
+            let mut new_events = BTreeSet::new();
+            while let Some(mut e) = ctx.score.events.pop_first() {
+                if e.start >= selection.begin.0 && e.start <= selection.end.0 {
+                    e.start += delta_pulse;
+                } else {
+                    if delta_pulse.0 > 0 {
+                        if e.start <= selection.end.0 + delta_pulse {
+                            e.start -= delta_pulse;
+                        }
+                    } else {
+                        if e.start >= selection.begin.0 + delta_pulse {
+                            e.start -= delta_pulse;
+                        }
+                    }
+                }
+                new_events.insert(e);
+            }
+            ctx.score.events = new_events;
+
+            let selection = &mut ctx.selections.0[*selection_id as usize];
+            selection.begin.0 += delta_pulse;
+            selection.end.0 += delta_pulse;
+        }
+    }
+}
+
+pub struct TransposeSelectionsContents {
+    pub semitones: i32,
+    pub selections: Vec<u32>
+}
+
+impl Operation for TransposeSelectionsContents {
+    fn apply(&self, ctx: &mut Context) {
+        for selection_id in &self.selections {
+            let selection = ctx.selections.0[*selection_id as usize].clone();
+            let mut new_events = BTreeSet::new();
+            while let Some(mut e) = ctx.score.events.pop_first() {
+                if e.start >= selection.begin.0 && e.start <= selection.end.0 {
+                    e.note.transpose(self.semitones);
+                }
+                new_events.insert(e);
+            }
+            ctx.score.events = new_events;
         }
     }
 }

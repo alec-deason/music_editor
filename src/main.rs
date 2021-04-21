@@ -23,6 +23,7 @@ struct App {
     ctx: Context,
     path: PathBuf,
     note_duration: Pulse,
+    note_octave: Octave,
     should_stop: bool,
     verovio: verovio::Verovio,
     view_dirty: bool,
@@ -33,6 +34,7 @@ impl Default for App {
             ctx: Context::default(),
             path: "/tmp/score.json".into(),
             note_duration: Pulse(4),
+            note_octave: Octave(4),
             should_stop: false,
             verovio: verovio::Verovio::new("/usr/local/share/verovio/"),
             view_dirty: true,
@@ -51,6 +53,11 @@ impl InputState for Idle {
                     delta: Duration::Event(-1),
                     selections: vec![0],
                 }.apply(&mut app.ctx);
+            } else if m.contains(KeyModifiers::CONTROL) {
+                MoveSelectionsContents {
+                    delta: Duration::Event(-1),
+                    selections: vec![0],
+                }.apply(&mut app.ctx);
             } else {
                 MoveSelections {
                     delta: Duration::Event(-1),
@@ -64,6 +71,11 @@ impl InputState for Idle {
                     delta: Duration::Event(1),
                     selections: vec![0],
                 }.apply(&mut app.ctx);
+            } else if m.contains(KeyModifiers::CONTROL) {
+                MoveSelectionsContents {
+                    delta: Duration::Event(1),
+                    selections: vec![0],
+                }.apply(&mut app.ctx);
             } else {
                 MoveSelections {
                     delta: Duration::Event(1),
@@ -71,10 +83,43 @@ impl InputState for Idle {
                 }.apply(&mut app.ctx);
             }
             app.view_dirty = true;
+        } else if c == KeyCode::Up {
+            if m.contains(KeyModifiers::CONTROL) {
+                TransposeSelectionsContents {
+                    semitones: 12,
+                    selections: vec![0],
+                }.apply(&mut app.ctx);
+                app.view_dirty = true;
+            } else if m.contains(KeyModifiers::SHIFT) {
+                app.note_octave.0 += 1;
+            } else {
+                TransposeSelectionsContents {
+                    semitones: 1,
+                    selections: vec![0],
+                }.apply(&mut app.ctx);
+                app.view_dirty = true;
+            }
+        } else if c == KeyCode::Down {
+            if m.contains(KeyModifiers::CONTROL) {
+                TransposeSelectionsContents {
+                    semitones: -12,
+                    selections: vec![0],
+                }.apply(&mut app.ctx);
+                app.view_dirty = true;
+            } else if m.contains(KeyModifiers::SHIFT) {
+                app.note_octave.0 -= 1;
+            } else {
+                TransposeSelectionsContents {
+                    semitones: -1,
+                    selections: vec![0],
+                }.apply(&mut app.ctx);
+                app.view_dirty = true;
+            }
         } else if c == KeyCode::Backspace {
             DeleteSelections {
                 selections: vec![0],
             }.apply(&mut app.ctx);
+            app.view_dirty = true;
         } else if let KeyCode::Char('w') = c {
             let data = serde_json::to_string(&app.ctx).unwrap();
             std::fs::write(&app.path, data);
@@ -100,7 +145,7 @@ impl InputState for Idle {
                             class: p,
                             ..Default::default()
                         },
-                        octave: Octave(4)
+                        octave: app.note_octave,
                     },
                     duration: app.note_duration,
                     selections: None,
