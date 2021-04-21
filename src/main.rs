@@ -1,6 +1,9 @@
-use std::io::{stdout, Write};
-use std::process::Command;
-use std::fs::File;
+use std::{
+    io::{stdout, Write},
+    process::Command,
+    fs::File,
+    path::PathBuf,
+};
 use simplelog::*;
 use strong_xml::XmlWrite;
 
@@ -18,6 +21,7 @@ trait InputState {
 
 struct App {
     ctx: Context,
+    path: PathBuf,
     note_duration: Pulse,
     should_stop: bool,
     view_dirty: bool,
@@ -26,6 +30,7 @@ impl Default for App {
     fn default() -> Self {
         Self {
             ctx: Context::default(),
+            path: "/tmp/score.json".into(),
             note_duration: Pulse(4),
             should_stop: false,
             view_dirty: true,
@@ -68,6 +73,9 @@ impl InputState for Idle {
             DeleteSelections {
                 selections: vec![0],
             }.apply(&mut app.ctx);
+        } else if let KeyCode::Char('w') = c {
+            let data = serde_json::to_string(&app.ctx).unwrap();
+            std::fs::write(&app.path, data);
         } else if let KeyCode::Char(c) = c {
             if let Some(p) = match c {
                 'a' => Some(PitchName::A),
@@ -117,6 +125,12 @@ fn main() -> Result<()> {
     enable_raw_mode()?;
     let mut state:Box<InputState> = Box::new(Idle);
     let mut app = App::default();
+    if let Some(path) = std::env::args().nth(1) {
+        let data = std::fs::read(&path).unwrap();
+        let ctx: Context = serde_json::from_slice(&data).unwrap();
+        app.path = path.into();
+        app.ctx = ctx;
+    }
 
     let mei = app.ctx.score.to_mei();
     let mei_xml = mei.to_string().unwrap();
@@ -125,7 +139,7 @@ fn main() -> Result<()> {
     let mut context = sxd_xpath::Context::new();
     context.set_namespace("svg", "http://www.w3.org/2000/svg");
     let factory = sxd_xpath::Factory::new();
-    let mut doc = package.as_document();
+    let doc = package.as_document();
     let mut f = std::fs::File::create("/tmp/test.svg").unwrap();
     sxd_document::writer::format_document(&doc, &mut f).unwrap();
     app.view_dirty = false;
