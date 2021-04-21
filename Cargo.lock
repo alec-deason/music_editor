@@ -883,6 +883,9 @@ dependencies = [
 [[package]]
 name = "verovio"
 version = "0.1.0"
+dependencies = [
+ "base64",
+]
 
 [[package]]
 name = "wasi"

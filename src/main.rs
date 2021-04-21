@@ -24,6 +24,7 @@ struct App {
     path: PathBuf,
     note_duration: Pulse,
     should_stop: bool,
+    verovio: verovio::Verovio,
     view_dirty: bool,
 }
 impl Default for App {
@@ -33,6 +34,7 @@ impl Default for App {
             path: "/tmp/score.json".into(),
             note_duration: Pulse(4),
             should_stop: false,
+            verovio: verovio::Verovio::new("/usr/local/share/verovio/"),
             view_dirty: true,
         }
     }
@@ -76,6 +78,11 @@ impl InputState for Idle {
         } else if let KeyCode::Char('w') = c {
             let data = serde_json::to_string(&app.ctx).unwrap();
             std::fs::write(&app.path, data);
+        } else if let KeyCode::Char('m') = c {
+            let mei = app.ctx.score.to_mei();
+            let mei_xml = mei.to_string().unwrap();
+            let midi = app.verovio.render_to_midi(&mei_xml);
+            std::fs::write("/tmp/score.midi", midi);
         } else if let KeyCode::Char(c) = c {
             if let Some(p) = match c {
                 'a' => Some(PitchName::A),
@@ -120,10 +127,9 @@ fn main() -> Result<()> {
     ]
     ).unwrap();
 
-    let mut verovio = verovio::Verovio::new("/usr/local/share/verovio/");
 
     enable_raw_mode()?;
-    let mut state:Box<InputState> = Box::new(Idle);
+    let mut state:Box<dyn InputState> = Box::new(Idle);
     let mut app = App::default();
     if let Some(path) = std::env::args().nth(1) {
         let data = std::fs::read(&path).unwrap();
@@ -134,7 +140,7 @@ fn main() -> Result<()> {
 
     let mei = app.ctx.score.to_mei();
     let mei_xml = mei.to_string().unwrap();
-    let svg = verovio.render_data(&mei_xml);
+    let svg = app.verovio.render_data(&mei_xml);
     let package =  sxd_document::parser::parse(&svg).unwrap();
     let mut context = sxd_xpath::Context::new();
     context.set_namespace("svg", "http://www.w3.org/2000/svg");
@@ -160,9 +166,9 @@ fn main() -> Result<()> {
         if app.view_dirty {
             let mei = app.ctx.score.to_mei();
             let mei_xml = mei.to_string().unwrap();
-            let svg = verovio.render_data(&mei_xml);
+            let svg = app.verovio.render_data(&mei_xml);
             let package =  sxd_document::parser::parse(&svg).unwrap();
-            let mut doc = package.as_document();
+            let doc = package.as_document();
             for e in app.ctx.events_in_selection(0) {
                 let xpath = factory.build(&format!("//svg:g[@id='note_{}']/svg:g/svg:use", e.id())).unwrap().unwrap();
                 let value = xpath.evaluate(&context, doc.root()).unwrap();

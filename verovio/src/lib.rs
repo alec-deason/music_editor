@@ -36,6 +36,18 @@ impl Verovio {
         let result = unsafe { vrvToolkit_renderData(self.toolkit.unwrap(), data.as_ptr(), options.as_ptr()) };
         unsafe { CStr::from_ptr(result) }.to_str().unwrap().to_string()
     }
+
+    pub fn render_to_midi(&mut self, data: &str) -> Vec<u8> {
+        // TODO: The actual C++ toolkit has ways to do this without jumping though base64. Maybe we could use that directly?
+        let data = CString::new(data).unwrap();
+        let options = CString::new(r#"{}"#).unwrap();
+        let result = unsafe {
+                vrvToolkit_loadData(self.toolkit.unwrap(), data.as_ptr());
+                vrvToolkit_renderToMIDI(self.toolkit.unwrap(), options.as_ptr())
+        };
+        let encoded = unsafe { CStr::from_ptr(result) }.to_str().unwrap().to_string();
+        base64::decode(&encoded).unwrap()
+    }
 }
 
 impl Drop for Verovio {
