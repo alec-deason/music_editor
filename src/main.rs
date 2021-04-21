@@ -18,6 +18,7 @@ trait InputState {
 
 struct App {
     ctx: Context,
+    note_duration: Pulse,
     should_stop: bool,
     view_dirty: bool,
 }
@@ -25,6 +26,7 @@ impl Default for App {
     fn default() -> Self {
         Self {
             ctx: Context::default(),
+            note_duration: Pulse(4),
             should_stop: false,
             view_dirty: true,
         }
@@ -85,11 +87,18 @@ impl InputState for Idle {
                         },
                         octave: Octave(4)
                     },
-                    duration: Pulse(4),
+                    duration: app.note_duration,
                     selections: None,
                 };
                 operation.apply(&mut app.ctx);
                 app.view_dirty = true;
+            } else if let Some(d) = match c {
+                '1' => Some(Pulse(4)),
+                '2' => Some(Pulse(2)),
+                '4' => Some(Pulse(1)),
+                _ => None,
+            } {
+                app.note_duration = d;
             }
         }
         self
@@ -156,6 +165,10 @@ fn main() -> Result<()> {
             }
             let mut f = std::fs::File::create("/tmp/test.svg").unwrap();
             sxd_document::writer::format_document(&doc, &mut f).unwrap();
+            Command::new("/usr/bin/imv-msg")
+                .arg(&format!("{}", viewer.id()))
+                .arg("close")
+                .status();
             Command::new("/usr/bin/imv-msg")
                 .arg(&format!("{}", viewer.id()))
                 .arg("open")

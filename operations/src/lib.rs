@@ -1,7 +1,9 @@
 #![feature(btree_retain, map_first_last)]
 use std::collections::BTreeSet;
 
-#[derive(Clone, Default, Debug)]
+use serde::{Serialize, Deserialize};
+
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Score {
     events: BTreeSet<Event>,
 }
@@ -46,6 +48,16 @@ impl Score {
                 layer.n = n.map(|n| n+1);
             }
         }
+        if !layer.events.is_empty() {
+            let measure = ir::Measure {
+                n: Some(1),
+                staves: vec![ir::Staff {
+                    layers: vec![layer],
+                    ..Default::default()
+                }]
+            };
+            section.measures.push(measure);
+        }
 
         mei.music = Some(ir::Music {
             body: Some(ir::Body {
@@ -84,7 +96,7 @@ impl Score {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Event {
     event_id: u32,
     note: Note,
@@ -110,7 +122,7 @@ impl PartialOrd for Event {
     }
 }
 
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Pulse(pub i32);
 
 
@@ -138,7 +150,7 @@ impl std::ops::SubAssign for Pulse {
 }
 
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Note {
     pub pitch: Pitch,
     pub octave: Octave,
@@ -154,7 +166,7 @@ impl Default for Note {
 }
 
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pitch {
     pub class: PitchName,
     pub accidental: Accidental
@@ -169,7 +181,7 @@ impl Default for Pitch {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PitchName {
     A,
     B,
@@ -197,7 +209,7 @@ impl std::fmt::Display for PitchName {
 
 
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Accidental {
     Sharp,
     Flat,
@@ -216,16 +228,16 @@ impl std::fmt::Display for Accidental {
 }
 
 
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Octave(pub u32);
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Selection {
     pub begin: Location,
     pub end: Location,
 }
 
-#[derive(Copy, Clone, Default, Debug)]
+#[derive(Copy, Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Location(pub Pulse);
 
 pub trait Operation {
@@ -349,10 +361,10 @@ impl Operation for DeleteSelections {
     }
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Selections(pub Vec<Selection>);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Context {
     pub score: Score,
     pub selections: Selections,
